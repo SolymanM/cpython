@@ -1,0 +1,95 @@
+from kivy.app import App
+from kivy.uix.boxlayout import BoxLayout
+from kivy.uix.button import Button
+from kivy.uix.textinput import TextInput
+from kivy.uix.label import Label
+from kivy.uix.filechooser import FileChooserIconView
+from kivy.uix.popup import Popup
+from kivy.core.window import Window
+from kivy.utils import platform
+import json
+import shutil
+import os
+
+class MainWidget(BoxLayout):
+    def __init__(self, **kwargs):
+        super().__init__(orientation='vertical', **kwargs)
+        self.chat_history = Label(size_hint_y=5)
+        self.add_widget(self.chat_history)
+
+        self.input_text = TextInput(hint_text='اكتب شيئًا...', size_hint_y=None, height=50)
+        self.add_widget(self.input_text)
+
+        btn_send = Button(text='أرسل', size_hint_y=None, height=50, on_press=self.respond)
+        self.add_widget(btn_send)
+
+        btn_data = Button(text='إدخال بيانات / صورة', size_hint_y=None, height=50, on_press=self.open_data_popup)
+        self.add_widget(btn_data)
+
+        btn_share_all = Button(text='مشاركة التطبيق والبيانات', size_hint_y=None, height=50, on_press=self.share_app_data)
+        self.add_widget(btn_share_all)
+
+    def respond(self, instance):
+        user_input = self.input_text.text
+        self.chat_history.text += f"أنت: {user_input}\n"
+        self.chat_history.text += f"الذكاء: {self.simple_reply(user_input)}\n"
+        self.input_text.text = ''
+
+    def simple_reply(self, text):
+        if "تفاحة" in text:
+            return "هل تقصد فاكهة؟"
+        return "شكرًا لمشاركتك."
+
+    def open_data_popup(self, instance):
+        layout = BoxLayout(orientation='vertical')
+        file_chooser = FileChooserIconView()
+        layout.add_widget(file_chooser)
+
+        def save_file(instance):
+            selected = file_chooser.selection
+            if selected:
+                dest = os.path.join(App.get_running_app().user_data_dir, os.path.basename(selected[0]))
+                shutil.copy(selected[0], dest)
+            popup.dismiss()
+
+        btn = Button(text='حفظ', size_hint_y=None, height=40, on_press=save_file)
+        layout.add_widget(btn)
+
+        popup = Popup(title='اختر ملفًا', content=layout, size_hint=(0.9, 0.9))
+        popup.open()
+
+    def share_app_data(self, instance):
+        zip_name = 'app_data_share.zip'
+        data_folder = App.get_running_app().user_data_dir
+        shutil.make_archive('app_data_share', 'zip', root_dir=data_folder)
+
+        if platform == 'android':
+            try:
+                from jnius import autoclass
+                PythonActivity = autoclass('org.kivy.android.PythonActivity')
+                Intent = autoclass('android.content.Intent')
+                Uri = autoclass('android.net.Uri')
+                File = autoclass('java.io.File')
+
+                currentActivity = PythonActivity.mActivity
+                file = File(currentActivity.getFilesDir().getAbsolutePath() + '/' + zip_name)
+                uri = Uri.fromFile(file)
+
+                intent = Intent()
+                intent.setAction(Intent.ACTION_SEND)
+                intent.setType('application/zip')
+                intent.putExtra(Intent.EXTRA_STREAM, uri)
+                currentActivity.startActivity(Intent.createChooser(intent, 'مشاركة'))
+            except Exception as e:
+                popup = Popup(title='خطأ', content=Label(text=str(e)), size_hint=(0.8, 0.3))
+                popup.open()
+        else:
+            popup = Popup(title='مشاركة', content=Label(text='المشاركة مدعومة على أندرويد فقط'), size_hint=(0.8, 0.3))
+            popup.open()
+
+class MyApp(App):
+    def build(self):
+        return MainWidget()
+
+if __name__ == '__main__':
+    MyApp().run()
